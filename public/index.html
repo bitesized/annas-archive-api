@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book Search</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f0f13;
+      color: #e8e8f0;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #fff;
+    }
+
+    header p {
+      margin-top: 0.4rem;
+      color: #888;
+      font-size: 0.9rem;
+    }
+
+    .search-bar {
+      display: flex;
+      gap: 0.5rem;
+      max-width: 700px;
+      margin: 0 auto 1rem;
+    }
+
+    .search-bar input[type="text"] {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      border: 1px solid #2a2a38;
+      border-radius: 8px;
+      background: #1a1a24;
+      color: #e8e8f0;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .search-bar input[type="text"]:focus {
+      border-color: #5b6aff;
+    }
+
+    .search-bar button {
+      padding: 0.75rem 1.5rem;
+      background: #5b6aff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+
+    .search-bar button:hover { background: #4a58ee; }
+    .search-bar button:disabled { background: #333; cursor: not-allowed; }
+
+    .options {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      max-width: 700px;
+      margin: 0 auto 2rem;
+    }
+
+    .options label { font-size: 0.85rem; color: #888; }
+
+    .options select {
+      padding: 0.35rem 0.65rem;
+      border: 1px solid #2a2a38;
+      border-radius: 6px;
+      background: #1a1a24;
+      color: #e8e8f0;
+      font-size: 0.85rem;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .settings-toggle {
+      margin-left: auto;
+      padding: 0.35rem 0.7rem;
+      border: 1px solid #2a2a38;
+      border-radius: 6px;
+      background: #1a1a24;
+      color: #aaa;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .settings-toggle:hover { border-color: #5b6aff; color: #cdd2ff; }
+
+    .settings {
+      max-width: 700px;
+      margin: 0 auto 1.5rem;
+      padding: 1rem;
+      background: #15151d;
+      border: 1px solid #2a2a38;
+      border-radius: 8px;
+    }
+
+    .settings > label {
+      display: block;
+      font-size: 0.8rem;
+      color: #aaa;
+      margin-bottom: 0.5rem;
+    }
+
+    .settings-row { display: flex; gap: 0.5rem; }
+
+    .settings-row input {
+      flex: 1;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid #2a2a38;
+      border-radius: 6px;
+      background: #1a1a24;
+      color: #e8e8f0;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .settings-row input:focus { border-color: #5b6aff; }
+
+    .settings-row button {
+      padding: 0.55rem 1.1rem;
+      background: #5b6aff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .settings-row button:hover { background: #4a58ee; }
+
+    .settings-hint {
+      margin-top: 0.6rem;
+      font-size: 0.72rem;
+      color: #666;
+      line-height: 1.5;
+    }
+
+    #key-state.set { color: #66bb6a; }
+    #key-state.unset { color: #ff8a65; }
+
+    #status {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #888;
+      min-height: 1.4rem;
+      margin-bottom: 1.5rem;
+    }
+
+    #status.error { color: #ff6b6b; }
+
+    .spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #444;
+      border-top-color: #5b6aff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #results {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 1.25rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .book-card {
+      background: #1a1a24;
+      border: 1px solid #2a2a38;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.15s, border-color 0.15s;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .book-card:hover {
+      transform: translateY(-3px);
+      border-color: #5b6aff;
+    }
+
+    .cover-wrap {
+      aspect-ratio: 2/3;
+      background: #111118;
+      overflow: hidden;
+    }
+
+    .cover-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .cover-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #333;
+      font-size: 2.5rem;
+    }
+
+    .book-info {
+      padding: 0.65rem 0.75rem 0.75rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .book-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      color: #e8e8f0;
+    }
+
+    .book-author {
+      font-size: 0.75rem;
+      color: #888;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .book-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.15rem;
+      flex-wrap: wrap;
+    }
+
+    .format-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+      background: #2a2a3e;
+      color: #8899ff;
+      border: 1px solid #3a3a55;
+    }
+
+    .format-badge.pdf  { color: #ff8a65; border-color: #5a2a1a; background: #2a1510; }
+    .format-badge.epub { color: #66bb6a; border-color: #1a4a1e; background: #101e12; }
+    .format-badge.djvu { color: #ffd54f; border-color: #4a3a00; background: #1e1800; }
+    .format-badge.mobi { color: #ce93d8; border-color: #3a1a4a; background: #180e20; }
+
+    .download-count {
+      font-size: 0.68rem;
+      color: #666;
+      margin-left: auto;
+    }
+
+    .dl-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.3rem;
+      width: 100%;
+      margin-top: 0.5rem;
+      padding: 0.4rem 0.5rem;
+      background: #1e2340;
+      border: 1px solid #3a3a58;
+      border-radius: 6px;
+      color: #8899ff;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .dl-btn:hover:not(:disabled) {
+      background: #252a50;
+      border-color: #5b6aff;
+      color: #aab4ff;
+    }
+
+    .dl-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .dl-btn.error {
+      color: #ff6b6b;
+      border-color: #5a1a1a;
+      background: #1e1010;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Book Search</h1>
+    <p>Search by title, author, ISBN, DOI, or MD5</p>
+  </header>
+
+  <div class="search-bar">
+    <input type="text" id="query" placeholder="e.g. Clean Code, Robert Martin, 978-0-13-235088-4" autocomplete="off" />
+    <button id="search-btn" onclick="doSearch()">Search</button>
+  </div>
+
+  <div class="options">
+    <label for="limit">Results:</label>
+    <select id="limit">
+      <option value="10">10</option>
+      <option value="20" selected>20</option>
+      <option value="30">30</option>
+      <option value="50">50</option>
+    </select>
+    <button id="settings-toggle" class="settings-toggle" onclick="toggleSettings()" title="Settings">⚙ Settings</button>
+  </div>
+
+  <div id="settings" class="settings" hidden>
+    <label for="dl-key">Anna's Archive download key</label>
+    <div class="settings-row">
+      <input type="password" id="dl-key" placeholder="Paste your fast-download key" autocomplete="off" />
+      <button id="dl-key-save" onclick="saveKey()">Save</button>
+    </div>
+    <p class="settings-hint">Stored locally in your browser and sent only to your own server for downloads. <span id="key-state"></span></p>
+  </div>
+
+  <div id="status"></div>
+  <div id="results"></div>
+
+  <script>
+    const queryInput = document.getElementById("query");
+    const resultsEl = document.getElementById("results");
+    const statusEl = document.getElementById("status");
+    const btn = document.getElementById("search-btn");
+
+    queryInput.addEventListener("keydown", e => {
+      if (e.key === "Enter") doSearch();
+    });
+
+    // --- Download key management (stored locally, never on the server's disk) ---
+    const DL_KEY_STORAGE = "annasDownloadKey";
+
+    function getKey() {
+      return localStorage.getItem(DL_KEY_STORAGE) || "";
+    }
+
+    function updateKeyState() {
+      const el = document.getElementById("key-state");
+      if (getKey()) {
+        el.textContent = "A key is saved.";
+        el.className = "set";
+      } else {
+        el.textContent = "No key saved yet.";
+        el.className = "unset";
+      }
+    }
+
+    function toggleSettings() {
+      const panel = document.getElementById("settings");
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) {
+        document.getElementById("dl-key").value = getKey();
+        updateKeyState();
+      }
+    }
+
+    function saveKey() {
+      const value = document.getElementById("dl-key").value.trim();
+      if (value) {
+        localStorage.setItem(DL_KEY_STORAGE, value);
+      } else {
+        localStorage.removeItem(DL_KEY_STORAGE);
+      }
+      updateKeyState();
+    }
+
+    updateKeyState();
+
+    async function doSearch() {
+      const query = queryInput.value.trim();
+      if (!query) return;
+
+      const limit = document.getElementById("limit").value;
+
+      btn.disabled = true;
+      resultsEl.innerHTML = "";
+      statusEl.className = "";
+      statusEl.innerHTML = '<span class="spinner"></span> Searching…';
+
+      try {
+        const res = await fetch(`/api/search?${new URLSearchParams({ query, limit })}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || "Request failed");
+        }
+
+        const items = data?.results ?? [];
+        const total = data?.count ?? items.length;
+
+        if (items.length === 0) {
+          statusEl.textContent = "No results found.";
+          return;
+        }
+
+        statusEl.textContent = `Showing ${items.length} of ${total} result${total !== 1 ? "s" : ""}`;
+        resultsEl.innerHTML = items.map(bookCard).join("");
+      } catch (err) {
+        statusEl.className = "error";
+        statusEl.textContent = "Error: " + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function fmtDownloads(n) {
+      if (!n && n !== 0) return "";
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+      if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "k";
+      return String(n);
+    }
+
+    function bookCard(book) {
+      const cover = book.cover_url
+        ? `<img src="${esc(book.cover_url)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=cover-placeholder>📖</div>'">`
+        : `<div class="cover-placeholder">📖</div>`;
+
+      const fmt = book.format ? book.format.toLowerCase() : null;
+      const fmtBadge = fmt
+        ? `<span class="format-badge ${esc(fmt)}">${esc(book.format.toUpperCase())}</span>`
+        : "";
+
+      const dlCount = (book.downloads != null)
+        ? `<span class="download-count">↓ ${fmtDownloads(book.downloads)}</span>`
+        : "";
+
+      const md5 = book.md5 || book.url?.match(/\/md5\/([a-f0-9]+)/i)?.[1];
+      const dlBtn = md5
+        ? `<button class="dl-btn" onclick="handleDownload(event, '${esc(md5)}', this)" title="Fast download">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-5-5h3V2h4v5h3L8 12z"/><rect x="2" y="13" width="12" height="2"/></svg>
+            Download
+           </button>`
+        : "";
+
+      return `
+        <a class="book-card" href="${esc(book.url)}" target="_blank" rel="noopener">
+          <div class="cover-wrap">${cover}</div>
+          <div class="book-info">
+            <div class="book-title">${esc(book.title || "Untitled")}</div>
+            ${book.author ? `<div class="book-author">${esc(book.author)}</div>` : ""}
+            ${fmtBadge || dlCount ? `<div class="book-meta">${fmtBadge}${dlCount}</div>` : ""}
+            ${dlBtn}
+          </div>
+        </a>`;
+    }
+
+    async function handleDownload(e, md5, btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = getKey();
+      if (!key) {
+        btn.className = "dl-btn error";
+        btn.textContent = "Set key in ⚙";
+        const panel = document.getElementById("settings");
+        if (panel.hidden) toggleSettings();
+        setTimeout(() => { btn.disabled = false; }, 0);
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "…";
+      try {
+        const res = await fetch(`/api/download?md5=${encodeURIComponent(md5)}`, {
+          headers: { Authorization: `Bearer ${key}` },
+        });
+        const data = await res.json();
+        if (!res.ok || !data.download_url) {
+          throw new Error(data.error || "No download URL");
+        }
+        window.open(data.download_url, "_blank", "noopener");
+        btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-5-5h3V2h4v5h3L8 12z"/><rect x="2" y="13" width="12" height="2"/></svg> Download`;
+      } catch (err) {
+        btn.className = "dl-btn error";
+        btn.textContent = err.message.length < 30 ? err.message : "Error";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function esc(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+</html>

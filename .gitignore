@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Secrets / keys (never commit these)
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
