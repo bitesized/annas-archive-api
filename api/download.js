@@ -24,8 +24,10 @@ export default async function handler(req, res) {
     return;
   }
 
+  const tld = (req.query.tld || "").trim() || undefined;
+
   try {
-    const data = await fastDownload(md5, key);
+    const data = await fastDownload(md5, key, { tld });
     res.status(200).json(data);
   } catch (err) {
     res.status(err.status || 502).json({ error: err.message });

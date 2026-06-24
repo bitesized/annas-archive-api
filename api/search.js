@@ -15,9 +15,10 @@ export default async function handler(req, res) {
     Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_LIMIT)
   );
   const includeDownloads = req.query.downloads !== "false";
+  const tld = (req.query.tld || "").trim() || undefined;
 
   try {
-    const results = await search(query, { limit, includeDownloads });
+    const results = await search(query, { limit, includeDownloads, tld });
     res.status(200).json({ query, count: results.length, results });
   } catch (err) {
     const status = err instanceof AnnasArchiveError ? 502 : 500;

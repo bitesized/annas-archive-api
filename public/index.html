@@ -348,6 +348,14 @@
       <option value="30">30</option>
       <option value="50">50</option>
     </select>
+    <label for="tld">Mirror:</label>
+    <select id="tld" title="Anna's Archive mirror domain">
+      <option value="">Default</option>
+      <option value="gd">.gd</option>
+      <option value="se">.se</option>
+      <option value="org">.org</option>
+      <option value="gs">.gs</option>
+    </select>
     <button id="settings-toggle" class="settings-toggle" onclick="toggleSettings()" title="Settings">⚙ Settings</button>
   </div>
 
@@ -372,6 +380,18 @@
     queryInput.addEventListener("keydown", e => {
       if (e.key === "Enter") doSearch();
     });
+
+    // --- Mirror (TLD) selection, persisted locally ---
+    const TLD_STORAGE = "annasTld";
+    const tldSelect = document.getElementById("tld");
+    tldSelect.value = localStorage.getItem(TLD_STORAGE) || "";
+    tldSelect.addEventListener("change", () => {
+      localStorage.setItem(TLD_STORAGE, tldSelect.value);
+    });
+
+    function getTld() {
+      return tldSelect.value;
+    }
 
     // --- Download key management (stored locally, never on the server's disk) ---
     const DL_KEY_STORAGE = "annasDownloadKey";
@@ -417,6 +437,7 @@
       if (!query) return;
 
       const limit = document.getElementById("limit").value;
+      const tld = getTld();
 
       btn.disabled = true;
       resultsEl.innerHTML = "";
@@ -424,7 +445,9 @@
       statusEl.innerHTML = '<span class="spinner"></span> Searching…';
 
       try {
-        const res = await fetch(`/api/search?${new URLSearchParams({ query, limit })}`);
+        const params = new URLSearchParams({ query, limit });
+        if (tld) params.set("tld", tld);
+        const res = await fetch(`/api/search?${params}`);
         const data = await res.json();
 
         if (!res.ok) {
@@ -505,7 +528,10 @@
       btn.disabled = true;
       btn.textContent = "…";
       try {
-        const res = await fetch(`/api/download?md5=${encodeURIComponent(md5)}`, {
+        const params = new URLSearchParams({ md5 });
+        const tld = getTld();
+        if (tld) params.set("tld", tld);
+        const res = await fetch(`/api/download?${params}`, {
           headers: { Authorization: `Bearer ${key}` },
         });
         const data = await res.json();
