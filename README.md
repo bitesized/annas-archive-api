@@ -68,6 +68,7 @@ Search Anna's Archive and return parsed, enriched results.
 | `query`     | string  | —       | **Required.** Title, author, ISBN, DOI, or MD5. Trimmed.        |
 | `limit`     | integer | `20`    | Clamped to the range `1`–`50`.                                  |
 | `downloads` | string  | `true`  | Pass `downloads=false` to skip per-result download-count lookups (faster). |
+| `tld`       | string  | —       | Mirror TLD to target (e.g. `gs`, `se`). Swaps the final label of `ANNAS_BASE_URL`'s host (`annas-archive.gd` → `annas-archive.gs`). A leading dot is tolerated; invalid/unknown TLDs fall back to the default mirror. |
 
 **Response `200`**
 
@@ -114,6 +115,7 @@ Result fields:
 ```bash
 curl 'http://localhost:3000/api/search?query=clean%20code&limit=10'
 curl 'http://localhost:3000/api/search?query=clean%20code&downloads=false'
+curl 'http://localhost:3000/api/search?query=clean%20code&tld=gs'
 ```
 
 ### `GET /api/download`
@@ -138,6 +140,7 @@ environment variable when no header is present.
 | Param | Type   | Notes                                          |
 | ----- | ------ | --------------------------------------------- |
 | `md5` | string | **Required.** The file hash from a search result. |
+| `tld` | string | Mirror TLD to proxy through (e.g. `gs`, `se`). Same semantics as on `/api/search`; falls back to the default mirror when invalid. |
 
 **Response `200`**
 
@@ -163,6 +166,8 @@ Passes through the upstream JSON, which includes the temporary download URL:
 ```bash
 curl 'http://localhost:3000/api/download?md5=abc123...' \
   -H 'Authorization: Bearer YOUR_KEY'
+curl 'http://localhost:3000/api/download?md5=abc123...&tld=gs' \
+  -H 'Authorization: Bearer YOUR_KEY'
 ```
 
 ### The scraping core — `lib/annas.js`
@@ -176,17 +181,24 @@ if you want to embed the logic elsewhere.
   pulls out the author, cover, and the `language · FORMAT · size · year …`
   metadata line. No network access — this is what the tests exercise.
 
-- **`search(query, { limit, includeDownloads })`** — fetches the search page,
-  parses it, trims to `limit`, then (unless `includeDownloads` is false) fans out
-  concurrent requests to `/dyn/md5/inline_info/<md5>` to fill in download counts.
-  Those counts aren't in the static HTML — the real site loads them client-side —
-  so this step is what makes `downloads` non-null. Concurrency is capped at 10 to
-  stay polite to the origin, and individual count failures are swallowed (leaving
-  `downloads: null`) so one bad lookup never sinks the whole response.
+- **`search(query, { limit, includeDownloads, tld })`** — fetches the search
+  page, parses it, trims to `limit`, then (unless `includeDownloads` is false)
+  fans out concurrent requests to `/dyn/md5/inline_info/<md5>` to fill in download
+  counts. Those counts aren't in the static HTML — the real site loads them
+  client-side — so this step is what makes `downloads` non-null. Concurrency is
+  capped at 10 to stay polite to the origin, and individual count failures are
+  swallowed (leaving `downloads: null`) so one bad lookup never sinks the whole
+  response. Pass `tld` to target a specific mirror.
 
-- **`fastDownload(md5, key)`** — proxies a single
+- **`fastDownload(md5, key, { tld })`** — proxies a single
   `/dyn/api/fast_download.json` request with the caller's key and returns the
-  upstream JSON.
+  upstream JSON. Pass `tld` to target a specific mirror.
+
+- **`resolveBaseUrl(tld)`** — maps a TLD like `"gs"` onto the upstream base URL
+  by swapping the final label of `ANNAS_BASE_URL`'s host (e.g.
+  `https://annas-archive.gd` → `https://annas-archive.gs`). A leading dot is
+  tolerated; an empty, malformed, or unknown TLD returns the default `BASE_URL`.
+  This is what both `search` and `fastDownload` use to honor the `tld` option.
 
 Failures to reach or parse the upstream throw `AnnasArchiveError`, which the
 search handler maps to a `502`.
