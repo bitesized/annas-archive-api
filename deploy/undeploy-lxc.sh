@@ -79,11 +79,11 @@ fi
 # Stop and destroy
 # ---------------------------------------------------------------------------
 if [ "$STATUS" = "running" ]; then
-  log "Stopping container $VMID…"
+  log "Stopping container ${VMID} ..."
   SSH "pct shutdown $VMID --timeout 30 || pct stop $VMID"
 fi
 
-log "Destroying container $VMID (with its rootfs)…"
+log "Destroying container ${VMID} (with its rootfs) ..."
 SSH "pct destroy $VMID --purge"
 
 log "Done. CT $VMID removed."
