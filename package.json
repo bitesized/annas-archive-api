@@ -13,9 +13,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "cheerio": "^1.0.0"
-  },
-  "devDependencies": {
+    "cheerio": "^1.0.0",
     "express": "^5.1.0"
   }
 }
