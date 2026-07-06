@@ -120,11 +120,18 @@ with a flag:
 ```
 
 Available flags: `--host`, `--vmid`, `--hostname`, `--template`, `--storage`,
-`--disk`, `--cores`, `--memory`, `--swap`, `--bridge`, `--port`, `--base-url`,
-`--timezone`, `--tags`.
+`--disk`, `--cores`, `--memory`, `--swap`, `--bridge`, `--mac`, `--port`,
+`--base-url`, `--timezone`, `--tags`.
 
 The container uses DHCP. To pin it to a fixed address, add a DHCP reservation on
-your router for the container's MAC (found in `/etc/pve/lxc/<vmid>.conf`).
+your router for the container's MAC (found in `/etc/pve/lxc/<vmid>.conf`). By
+default Proxmox generates a fresh MAC each time you create a container, so a
+teardown-and-redeploy would break that reservation. To keep the same address
+across redeploys, pass the container's MAC back in with `--mac`:
+
+```bash
+./deploy/deploy-lxc.sh --mac <container-mac>
+```
 
 **Undeploy**
 

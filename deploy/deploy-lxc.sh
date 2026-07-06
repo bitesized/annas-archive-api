@@ -30,6 +30,8 @@
 #   --memory <MB>        RAM in MB                              [512]
 #   --swap <MB>          swap in MB                             [512]
 #   --bridge <name>      network bridge                         [vmbr0]
+#   --mac <addr>         pin the container MAC address          [auto: Proxmox-generated]
+#                        (keeps a router DHCP reservation valid across redeploys)
 #   --port <port>        app listen port                        [8080]
 #   --base-url <url>     ANNAS_BASE_URL for the app             [https://annas-archive.gd]
 #   --timezone <tz>      container timezone                     [Pacific/Auckland]
@@ -51,6 +53,7 @@ CORES=1
 RAM_MB=512
 SWAP_MB=512
 BRIDGE="vmbr0"
+MAC_ADDR=""
 APP_PORT=8080
 ANNAS_BASE_URL="https://annas-archive.gd"
 TIMEZONE="Pacific/Auckland"
@@ -59,7 +62,7 @@ TAGS="annas-archive"
 APP_DIR="/opt/annas-archive-api"
 SERVICE="annas-archive-api"
 
-usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { awk 'NR>=2 && /^set -euo/{exit} NR>=2{sub(/^# ?/,"");print}' "$0"; exit "${1:-0}"; }
 
 # ---------------------------------------------------------------------------
 # Parse CLI args
@@ -76,6 +79,7 @@ while [ $# -gt 0 ]; do
     --memory)    RAM_MB="$2";         shift 2 ;;
     --swap)      SWAP_MB="$2";        shift 2 ;;
     --bridge)    BRIDGE="$2";         shift 2 ;;
+    --mac)       MAC_ADDR="$2";       shift 2 ;;
     --port)      APP_PORT="$2";       shift 2 ;;
     --base-url)  ANNAS_BASE_URL="$2"; shift 2 ;;
     --timezone)  TIMEZONE="$2";       shift 2 ;;
@@ -119,12 +123,18 @@ log "Using VMID $VMID."
 # ---------------------------------------------------------------------------
 # 2. Create the container (DHCP, unprivileged — matches existing CTs)
 # ---------------------------------------------------------------------------
+NET0="name=eth0,bridge=${BRIDGE},ip=dhcp,type=veth"
+if [ -n "$MAC_ADDR" ]; then
+  NET0="name=eth0,bridge=${BRIDGE},hwaddr=${MAC_ADDR},ip=dhcp,type=veth"
+  log "Pinning MAC address: $MAC_ADDR"
+fi
+
 log "Creating container $VMID ($CT_HOSTNAME) on ${ROOTFS_STORAGE} ..."
 SSH "pct create $VMID '$TEMPLATE' \
       --hostname '$CT_HOSTNAME' \
       --cores $CORES --memory $RAM_MB --swap $SWAP_MB \
       --rootfs ${ROOTFS_STORAGE}:${DISK_GB} \
-      --net0 name=eth0,bridge=${BRIDGE},ip=dhcp,type=veth \
+      --net0 '$NET0' \
       --ostype debian --unprivileged 1 --features nesting=1 \
       --onboot 1 --timezone '$TIMEZONE' --tags '$TAGS' \
       --description 'annas-archive-api (deployed via deploy-lxc.sh)'"
