@@ -1,4 +1,4 @@
-# annas-search-download
+# annas-archive-api
 
 Self-contained Anna's Archive search UI + fast-download proxy. Node 18+, no build step.
 

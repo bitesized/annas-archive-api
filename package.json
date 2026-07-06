@@ -1,5 +1,5 @@
 {
-  "name": "annas-search-download",
+  "name": "annas-archive-api",
   "version": "1.0.0",
   "description": "Self-contained Anna's Archive search UI + fast-download proxy.",
   "type": "module",

@@ -1,23 +1,40 @@
-# annas-search-download
+# annas-archive-api
 
-A self-contained [Anna's Archive](https://annas-archive.org) search UI and
-fast-download proxy. It scrapes the public search page into clean JSON, enriches
-each result with live download counts, and proxies authenticated fast-download
-requests using a key the user supplies — no secrets are ever stored on the
-server.
+A self-contained [Anna's Archive](https://annas-archive.org) search API and
+fast-download proxy, with a small built-in web UI. It scrapes the public search
+page into clean JSON, enriches each result with live download counts, and
+proxies authenticated fast-download requests using a key the user supplies — no
+secrets are ever stored on the server.
 
 The whole thing is two small request handlers (`api/`), a scraping core
-(`lib/annas.js`), and a single static HTML page (`public/`), served locally with
-Express. It's meant to be run on your own machine.
+(`lib/annas.js`), and a single static HTML page (`public/`), served with
+Express. Run it on your own machine with Node, or ship it as a container.
 
 ```
-┌──────────────┐   /api/search    ┌─────────────┐   GET /search        ┌─────────────────┐
-│  public/     │ ───────────────► │  api/       │ ───────────────────► │ Anna's Archive  │
-│  index.html  │                  │  search.js  │ ◄─── HTML ─────────── │  (annas-archive)│
-│  (browser)   │   /api/download  │  download.js│   GET /dyn/... json   │                 │
-│              │ ───────────────► │             │ ───────────────────► │                 │
-└──────────────┘                  └──────┬──────┘                      └─────────────────┘
-                                         │ lib/annas.js (scrape + proxy)
+┌──────────────────────────────────────────────────────────┐
+│              Browser  —  public/index.html               │
+│    search UI + settings panel  (vanilla JS, no build)    │
+└──────────────────────────────────────────────────────────┘
+                              │
+                                 HTTP  ·  JSON
+                              ▼
+┌──────────────────────────────────────────────────────────┐
+│                Express server  —  dev.mjs                │
+│                                                          │
+│         api/search.js            api/download.js         │
+│          validate + shape          key + proxy           │
+│                                                          │
+│      lib/annas.js  —  scrape core + download proxy       │
+│        search · parseSearchResults · fastDownload        │
+└──────────────────────────────────────────────────────────┘
+                              │
+                                 HTTPS  ·  browser-like User-Agent
+                              ▼
+┌──────────────────────────────────────────────────────────┐
+│        Anna's Archive mirror   (annas-archive.gd)        │
+│            /search   ·   /dyn/md5/inline_info            │
+│               /dyn/api/fast_download.json                │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ## Quick start
@@ -41,6 +58,37 @@ Run the offline parser tests (no network needed — they parse a saved fixture):
 ```bash
 npm test
 ```
+
+## Run with Docker
+
+The image builds on `node:24-alpine` (the current Node LTS), installs only
+production dependencies, and runs as the non-root `node` user.
+
+```bash
+docker build -t annas-archive-api .
+docker run --rm -p 3000:3000 annas-archive-api
+```
+
+Then open http://localhost:3000.
+
+Pass configuration through with `-e`. To provide a server-side fallback
+download key (see [Configuration](#configuration)) or target a different
+mirror:
+
+```bash
+docker run --rm -p 3000:3000 \
+  -e ANNAS_DOWNLOAD_KEY=your-fast-download-key \
+  -e ANNAS_BASE_URL=https://annas-archive.gd \
+  annas-archive-api
+```
+
+Notes:
+
+- `PORT` defaults to `3000` inside the container; the `EXPOSE`d port is `3000`.
+  To publish it elsewhere on the host, change the left side of the mapping, e.g.
+  `-p 8080:3000`.
+- `.dockerignore` keeps the build context lean (no `node_modules`, `.git`,
+  tests, or docs), so builds are fast and reproducible from `package-lock.json`.
 
 ## How it works
 
@@ -172,8 +220,8 @@ curl 'http://localhost:3000/api/download?md5=abc123...&tld=gs' \
 
 ### The scraping core — `lib/annas.js`
 
-The handlers delegate to three exported functions; you can import these directly
-if you want to embed the logic elsewhere.
+The handlers delegate to a handful of exported functions; you can import these
+directly if you want to embed the logic elsewhere.
 
 - **`parseSearchResults(html, baseUrl?)`** — pure function that scrapes a search
   page's HTML into result objects (with `cheerio`). It anchors on each result's
@@ -209,7 +257,7 @@ All optional, read from the environment:
 
 | Variable             | Default                       | Purpose                                                       |
 | -------------------- | ----------------------------- | ----------------------------------------------------------- |
-| `PORT`               | `3000`                        | Local dev server port (`dev.mjs` only).                     |
+| `PORT`               | `3000`                        | Server port (`dev.mjs`).                                    |
 | `ANNAS_BASE_URL`     | `https://annas-archive.gd`    | Upstream mirror to scrape/proxy.                            |
 | `ANNAS_DOWNLOAD_KEY` | —                             | Fallback fast-download key when no `Authorization` header.   |
 
@@ -256,6 +304,8 @@ test/
   parse.test.mjs   Offline parser tests
   fixtures/        Saved search-page HTML used by the tests
 dev.mjs            Express server (serves public/ + mounts the api/ handlers)
+Dockerfile         Container build (node:24-alpine, non-root, prod deps only)
+.dockerignore      Keeps the Docker build context lean
 ```
 
 ## Notes
