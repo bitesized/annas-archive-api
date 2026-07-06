@@ -90,6 +90,53 @@ Notes:
 - `.dockerignore` keeps the build context lean (no `node_modules`, `.git`,
   tests, or docs), so builds are fast and reproducible from `package-lock.json`.
 
+## Deploy to Proxmox (LXC)
+
+Two scripts in `deploy/` create and tear down an unprivileged LXC on a Proxmox
+host and run the app inside it as a systemd service. They hold **no secrets and
+no hard-coded addresses** — authentication is via your SSH agent, and every
+setting is a `--flag` with a sensible default.
+
+**Prerequisites**
+
+- SSH access to the Proxmox node with your key loaded (`ssh-add -l`), reachable
+  through a host alias in `~/.ssh/config` (default alias: `proxmox`).
+- A container template already present on the node (e.g. `debian-13-standard`).
+
+**Deploy** — run from the repo root:
+
+```bash
+./deploy/deploy-lxc.sh
+```
+
+This picks a free VMID, creates a Debian 13 container (DHCP, unprivileged),
+installs Node and the app's production dependencies, registers and starts a
+systemd service, then prints the container's IP and URL. Override any default
+with a flag:
+
+```bash
+./deploy/deploy-lxc.sh --port 9000 --memory 1024 --storage sata-storage
+./deploy/deploy-lxc.sh --help      # full list of flags
+```
+
+Available flags: `--host`, `--vmid`, `--hostname`, `--template`, `--storage`,
+`--disk`, `--cores`, `--memory`, `--swap`, `--bridge`, `--port`, `--base-url`,
+`--timezone`, `--tags`.
+
+The container uses DHCP. To pin it to a fixed address, add a DHCP reservation on
+your router for the container's MAC (found in `/etc/pve/lxc/<vmid>.conf`).
+
+**Undeploy**
+
+```bash
+./deploy/undeploy-lxc.sh
+```
+
+Finds the container by hostname (default `annas-archive-api`), shows what it will
+remove, and asks for confirmation before stopping and destroying it (rootfs
+included). Use `--vmid <id>` to target a specific container, or `--yes` to skip
+the prompt.
+
 ## How it works
 
 `dev.mjs` is an Express server that serves `public/` statically and mounts the
@@ -303,6 +350,9 @@ public/
 test/
   parse.test.mjs   Offline parser tests
   fixtures/        Saved search-page HTML used by the tests
+deploy/
+  deploy-lxc.sh    Create a Proxmox LXC and run the app as a systemd service
+  undeploy-lxc.sh  Stop and destroy that LXC
 dev.mjs            Express server (serves public/ + mounts the api/ handlers)
 Dockerfile         Container build (node:24-alpine, non-root, prod deps only)
 .dockerignore      Keeps the Docker build context lean
