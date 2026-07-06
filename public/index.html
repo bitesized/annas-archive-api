@@ -93,6 +93,19 @@
       cursor: pointer;
     }
 
+    .options input.tld-input {
+      width: 92px;
+      padding: 0.35rem 0.65rem;
+      border: 1px solid #2a2a38;
+      border-radius: 6px;
+      background: #1a1a24;
+      color: #e8e8f0;
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    .options input.tld-input:focus { border-color: #5b6aff; }
+
     .settings-toggle {
       margin-left: auto;
       padding: 0.35rem 0.7rem;
@@ -349,13 +362,14 @@
       <option value="50">50</option>
     </select>
     <label for="tld">Mirror:</label>
-    <select id="tld" title="Anna's Archive mirror domain">
-      <option value="">Default</option>
-      <option value="gd">.gd</option>
-      <option value="se">.se</option>
-      <option value="org">.org</option>
-      <option value="gs">.gs</option>
-    </select>
+    <input type="text" id="tld" class="tld-input" list="tld-options"
+           placeholder="Default" autocomplete="off" spellcheck="false"
+           title="Anna's Archive mirror — pick a TLD or type your own" />
+    <datalist id="tld-options">
+      <option value=".pk"></option>
+      <option value=".gd"></option>
+      <option value=".gl"></option>
+    </datalist>
     <button id="settings-toggle" class="settings-toggle" onclick="toggleSettings()" title="Settings">⚙ Settings</button>
   </div>
 
@@ -381,16 +395,19 @@
       if (e.key === "Enter") doSearch();
     });
 
-    // --- Mirror (TLD) selection, persisted locally ---
+    // --- Mirror (TLD) selection, persisted locally. Free-text with a few
+    // suggested TLDs (see the datalist); anything the user types is accepted.
     const TLD_STORAGE = "annasTld";
-    const tldSelect = document.getElementById("tld");
-    tldSelect.value = localStorage.getItem(TLD_STORAGE) || "";
-    tldSelect.addEventListener("change", () => {
-      localStorage.setItem(TLD_STORAGE, tldSelect.value);
+    const tldInput = document.getElementById("tld");
+    tldInput.value = localStorage.getItem(TLD_STORAGE) || "";
+    tldInput.addEventListener("input", () => {
+      localStorage.setItem(TLD_STORAGE, tldInput.value.trim());
     });
 
+    // Normalize to a bare TLD the API expects: drop a leading dot, lowercase.
+    // Empty means "use the server default mirror".
     function getTld() {
-      return tldSelect.value;
+      return tldInput.value.trim().replace(/^\.+/, "").toLowerCase();
     }
 
     // --- Download key management (stored locally, never on the server's disk) ---
