@@ -99,6 +99,15 @@ die()  { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 SSH() { ssh -o StrictHostKeyChecking=accept-new "$PVE_HOST" "$@"; }
 
 # ---------------------------------------------------------------------------
+# Prompt for the container root password (before any network activity)
+# ---------------------------------------------------------------------------
+read -r -s -p "Root password for the container: " CT_ROOT_PASS; printf '\n'
+read -r -s -p "Confirm password: "                CT_ROOT_PASS2; printf '\n'
+[ "$CT_ROOT_PASS" = "$CT_ROOT_PASS2" ] || die "Passwords do not match."
+[ -n "$CT_ROOT_PASS" ]                 || die "Password cannot be empty."
+unset CT_ROOT_PASS2
+
+# ---------------------------------------------------------------------------
 # 0. Preflight
 # ---------------------------------------------------------------------------
 for bin in ssh scp tar; do
@@ -141,6 +150,9 @@ SSH "pct create $VMID '$TEMPLATE' \
 
 log "Starting container…"
 SSH "pct start $VMID"
+
+log "Setting root password…"
+printf 'root:%s\n' "$CT_ROOT_PASS" | ssh -o StrictHostKeyChecking=accept-new "$PVE_HOST" "pct exec $VMID -- chpasswd"
 
 # ---------------------------------------------------------------------------
 # 3. Wait for a DHCP lease and capture the container IP
