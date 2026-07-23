@@ -90,13 +90,10 @@ docker run --rm -p 3000:3000 annas-archive-api
 
 Then open http://localhost:3000.
 
-Pass configuration through with `-e`. To provide a server-side fallback
-download key (see [Configuration](#configuration)) or target a different
-mirror:
+Pass configuration through with `-e`. To target a different mirror:
 
 ```bash
 docker run --rm -p 3000:3000 \
-  -e ANNAS_DOWNLOAD_KEY=your-fast-download-key \
   -e ANNAS_BASE_URL=https://annas-archive.gd \
   annas-archive-api
 ```
@@ -253,8 +250,8 @@ and is never persisted server-side:
 Authorization: Bearer <your-fast-download-key>
 ```
 
-For server-side or CLI use, the handler falls back to the `ANNAS_DOWNLOAD_KEY`
-environment variable when no header is present.
+The header is required — there is no environment-variable fallback, so an
+unauthenticated request cannot spend a key the operator configured.
 
 **Query parameters**
 
@@ -332,7 +329,6 @@ All optional, read from the environment:
 | -------------------- | ----------------------------- | ----------------------------------------------------------- |
 | `PORT`               | `3000`                        | Server port (`dev.mjs`).                                    |
 | `ANNAS_BASE_URL`     | `https://annas-archive.gd`    | Upstream mirror to scrape/proxy.                            |
-| `ANNAS_DOWNLOAD_KEY` | —                             | Fallback fast-download key when no `Authorization` header.   |
 
 A browser-like `User-Agent` is sent on every upstream request to avoid being
 served a DDoS-Guard challenge page, and every request has a 30s timeout.

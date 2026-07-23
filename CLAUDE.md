@@ -39,7 +39,6 @@ The handlers in `api/` must stay framework-agnostic (`req.query` in, `res.status
 | -------------------- | -------------------------- | ----------------------------------------- |
 | `PORT`               | `3000`                     | Dev server port                           |
 | `ANNAS_BASE_URL`     | `https://annas-archive.gd` | Upstream mirror                           |
-| `ANNAS_DOWNLOAD_KEY` | —                          | Fallback key when no Authorization header |
 
 ## Tests
 

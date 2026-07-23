@@ -1,14 +1,13 @@
 import { fastDownload } from "../lib/annas.js";
 
 // The fast-download key is supplied per request via `Authorization: Bearer
-// <key>`, with an optional env-var fallback for server-side/CLI use. No
-// secrets are read from disk.
-const ENV_DOWNLOAD_KEY = process.env.ANNAS_DOWNLOAD_KEY || null;
-
+// <key>`. No secrets are read from disk or from the environment — an env
+// fallback would make this an open proxy on the operator's key when the
+// server is exposed on a network without auth.
 function getDownloadKey(req) {
   const auth = req.headers.authorization || "";
   const match = auth.match(/^Bearer\s+(.+)$/i);
-  return match ? match[1].trim() : ENV_DOWNLOAD_KEY;
+  return match ? match[1].trim() : null;
 }
 
 export default async function handler(req, res) {
