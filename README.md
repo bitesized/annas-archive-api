@@ -37,6 +37,25 @@ Express. Run it on your own machine with Node, or ship it as a container.
 └──────────────────────────────────────────────────────────┘
 ```
 
+## Why I built this
+
+I do all of my reading on a Kobo running [KOReader](https://github.com/koreader/koreader), and getting books onto the device was always a hassle. Either I would go through the process of downloading a book, uploading to dropbox, and then moving the file to my KOReader library, or doing the same with a manual wired file transfer. Either way, I would always need a second device just to get a new book on my Kobo.
+
+Anna's Archive exposes a download API, however this API only accepts an MD5 hash, and there is no public search api provided to easily access this hash. This project aims to bridge this gap. By scraping search page results into JSON and passing the MD5 hash to the existing download API, this project provides an all-in-one solution to searching and downloading books from Anna's Archive. A companion [KOReader plugin](https://github.com/bitesized/annasarchive.koplugin/) can be installed to allow for both searching and downloading directly from the reading device itself, removing the need for manual file transfers.
+
+This project served as a very useful exercise in both development and learning about important security considerations:
+
+* **Handling secrets** - A key requirement of the project is the passing of a secret download key to the download API. This key also serves as the login to the Anna's Archive website, and as such needs to be handled with care. An important part of this project was ensuring that the key doesn't persist anywhere server-side.
+* **Browser-like UA** - In order to avoid bot detection/captcha that Anna's Archive employs, the scraper uses a realistic user agent header.
+* **Reverse-engineering search results** - Anna's Archive doesn't expose a search API, so the search results need to be scraped from the rendered HTML from the search results page. The core of the JSONified search results is the MD5 hash that's taken from the URL of the linked books from the search page, as I determined it was the least likely to change. Once this is located the parser walks up levels to find the rest of the required information within the search result card. This per-card method prevents one malformed result from poisoning others.
+* **Isolation of live download counts** - The live download counts for each search result do not appear in the raw HTML, instead they are fetched per result on the client side. As such they had to be isolated via the developer tools' network tab to identify the endpoint being hit.
+* **Untrusted third-party content** - the search results are built from user-submitted data outside of my control. This means that a lot of the scraped data should be treated as untrusted. As such, all the scraped data is passed through an escaping function first, treating it as a potential XSS vector rather than assuming safe text.
+* **Containerised deployment** - I explored and learned about both Docker and LXC deployment for this project, as my personal instance is hosted on a Proxmox server
+
+### Legal and ethical considerations
+
+Anna's Archive is a shadow library that indexes copyrighted materials. This tool automates requests against a public mirror that is specified by the user, and downloading any copyrighted materials requires a download key that is required to be provided by the user. I don't endorse or promote the use of this tool to access any material you don't have the legal right to access - it was built purely to overcome a personal issue in my reading setup.
+
 ## Quick start
 
 Requires Node 18+ (the code relies on the global `fetch` and
@@ -364,9 +383,3 @@ dev.mjs            Express server (serves public/ + mounts the api/ handlers)
 Dockerfile         Container build (node:24-alpine, non-root, prod deps only)
 .dockerignore      Keeps the Docker build context lean
 ```
-
-## Notes
-
-This tool only automates requests against a public mirror; respect Anna's
-Archive's terms and your local laws. Fast downloads require a valid member key,
-which is yours to supply.
