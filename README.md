@@ -2,8 +2,11 @@
 
 A self-contained [Anna's Archive](https://annas-archive.org) search API and
 fast-download proxy with a built-in web UI. It scrapes the search page into
-JSON, fills in live download counts, and proxies fast-download requests using a
-key you supply. Nothing is stored server-side.
+JSON, fills in live download counts, and proxies fast-download requests.
+
+Both endpoints need your Anna's Archive account secret key, which you supply per
+request — searching requires it because Anna's Archive challenges anonymous
+requests. Nothing is stored server-side.
 
 Node 18+, no build step, no database.
 
@@ -61,6 +64,11 @@ npm run dev            # http://localhost:3000
 PORT=4020 npm run dev  # if 3000 is taken
 npm test               # offline parser tests, no network
 ```
+
+Open the app, then **paste your Anna's Archive account secret key into ⚙ Settings
+before searching** — it's the key from your account page, the same one that
+authorises fast downloads. Searches without it fail (see
+[Authentication](#get-apisearch)).
 
 ## Run with Docker
 
@@ -125,10 +133,12 @@ each file in `api/` as a handler; the handlers are framework-agnostic
 
 ### `GET /api/search`
 
-**Authentication** — effectively required. Anna's Archive puts unauthenticated
+**Authentication** — required in practice. Anna's Archive puts unauthenticated
 `/search` requests behind a DDoS-Guard JavaScript challenge that an HTTP client
-can't solve, so anonymous searches fail. A signed-in session skips it, and the
-account secret key is the same key `/api/download` uses:
+can't solve. The server will still attempt an anonymous search, so this header is
+technically optional and would start working again if the upstream stopped
+challenging — but today a call without it returns `401`. A signed-in session
+skips the check, and the key is the same one `/api/download` uses:
 
 ```
 Authorization: Bearer <your-account-secret-key>

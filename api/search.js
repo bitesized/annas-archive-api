@@ -17,8 +17,9 @@ export default async function handler(req, res) {
   );
   const includeDownloads = req.query.downloads !== "false";
   const tld = (req.query.tld || "").trim() || undefined;
-  // Optional: signed-in searches skip the upstream's bot check. Unauthenticated
-  // searches still work if the upstream stops challenging them.
+  // Required in practice: the upstream challenges anonymous searches, so a
+  // request without this fails with a 401. Kept optional here so an
+  // unauthenticated search starts working again if that ever changes.
   const key = getBearerKey(req) || undefined;
 
   try {
