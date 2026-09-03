@@ -1,14 +1,11 @@
-# annas-archive-api
+# Anna's Archive API
 
 A self-contained [Anna's Archive](https://annas-archive.org) search API and
-fast-download proxy, with a small built-in web UI. It scrapes the public search
-page into clean JSON, enriches each result with live download counts, and
-proxies authenticated fast-download requests using a key the user supplies — no
-secrets are ever stored on the server.
+fast-download proxy with a built-in web UI. It scrapes the search page into
+JSON, fills in live download counts, and proxies fast-download requests using a
+key you supply. Nothing is stored server-side.
 
-The whole thing is two small request handlers (`api/`), a scraping core
-(`lib/annas.js`), and a single static HTML page (`public/`), served with
-Express. Run it on your own machine with Node, or ship it as a container.
+Node 18+, no build step, no database.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -28,7 +25,7 @@ Express. Run it on your own machine with Node, or ship it as a container.
 │        search · parseSearchResults · fastDownload        │
 └──────────────────────────────────────────────────────────┘
                               │
-                                 HTTPS  ·  browser-like User-Agent
+                                 HTTPS  ·  signed-in session
                               ▼
 ┌──────────────────────────────────────────────────────────┐
 │        Anna's Archive mirror   (annas-archive.gd)        │
@@ -58,39 +55,25 @@ Anna's Archive is a shadow library that indexes copyrighted materials. This tool
 
 ## Quick start
 
-Requires Node 18+ (the code relies on the global `fetch` and
-`AbortSignal.timeout`).
-
 ```bash
 npm install
-npm run dev          # serves http://localhost:3000
-```
-
-If the port is taken:
-
-```bash
-PORT=4020 npm run dev
-```
-
-Run the offline parser tests (no network needed — they parse a saved fixture):
-
-```bash
-npm test
+npm run dev            # http://localhost:3000
+PORT=4020 npm run dev  # if 3000 is taken
+npm test               # offline parser tests, no network
 ```
 
 ## Run with Docker
 
-The image builds on `node:24-alpine` (the current Node LTS), installs only
-production dependencies, and runs as the non-root `node` user.
+Builds on `node:24-alpine`, production dependencies only, runs as the non-root
+`node` user.
 
 ```bash
 docker build -t annas-archive-api .
 docker run --rm -p 3000:3000 annas-archive-api
 ```
 
-Then open http://localhost:3000.
-
-Pass configuration through with `-e`. To target a different mirror:
+`PORT` is `3000` inside the container — remap the host side to move it
+(`-p 8080:3000`). Pass config with `-e`:
 
 ```bash
 docker run --rm -p 3000:3000 \
@@ -98,95 +81,71 @@ docker run --rm -p 3000:3000 \
   annas-archive-api
 ```
 
-Notes:
-
-- `PORT` defaults to `3000` inside the container; the `EXPOSE`d port is `3000`.
-  To publish it elsewhere on the host, change the left side of the mapping, e.g.
-  `-p 8080:3000`.
-- `.dockerignore` keeps the build context lean (no `node_modules`, `.git`,
-  tests, or docs), so builds are fast and reproducible from `package-lock.json`.
-
 ## Deploy to Proxmox (LXC)
 
-Two scripts in `deploy/` create and tear down an unprivileged LXC on a Proxmox
-host and run the app inside it as a systemd service. They hold **no secrets and
-no hard-coded addresses** — authentication is via your SSH agent, and every
-setting is a `--flag` with a sensible default.
+`deploy/` holds two scripts that create and destroy an unprivileged LXC running
+the app as a systemd service. No secrets, no hard-coded addresses — auth is via
+your SSH agent and every setting has a flag.
 
-**Prerequisites**
-
-- SSH access to the Proxmox node with your key loaded (`ssh-add -l`), reachable
-  through a host alias in `~/.ssh/config` (default alias: `proxmox`).
-- A container template already present on the node (e.g. `debian-13-standard`).
-
-**Deploy** — run from the repo root:
+You need SSH access to the Proxmox node with your key loaded (`ssh-add -l`) and
+a host alias in `~/.ssh/config` (default: `proxmox`), plus a container template
+on the node (e.g. `debian-13-standard`).
 
 ```bash
-./deploy/deploy-lxc.sh
+./deploy/deploy-lxc.sh                                    # create and start
+./deploy/deploy-lxc.sh --port 9000 --memory 1024          # override defaults
+./deploy/deploy-lxc.sh --help                             # all flags
+./deploy/undeploy-lxc.sh                                  # stop and destroy
 ```
 
-This picks a free VMID, creates a Debian 13 container (DHCP, unprivileged),
-installs Node and the app's production dependencies, registers and starts a
-systemd service, then prints the container's IP and URL. Override any default
-with a flag:
+Deploy picks a free VMID, creates a Debian 13 container on DHCP, installs Node
+and the app, registers the service, and prints the container's IP. Flags:
+`--host`, `--vmid`, `--hostname`, `--template`, `--storage`, `--disk`,
+`--cores`, `--memory`, `--swap`, `--bridge`, `--mac`, `--port`, `--base-url`,
+`--timezone`, `--tags`.
+
+Undeploy finds the container by hostname, shows what it will remove, and asks
+before destroying it. `--vmid` targets a specific one, `--yes` skips the prompt.
+
+**Keeping a fixed IP.** Proxmox generates a new MAC per container, so a
+redeploy breaks any DHCP reservation. Pass the old MAC back in:
 
 ```bash
-./deploy/deploy-lxc.sh --port 9000 --memory 1024 --storage sata-storage
-./deploy/deploy-lxc.sh --help      # full list of flags
+./deploy/deploy-lxc.sh --mac <container-mac>   # from /etc/pve/lxc/<vmid>.conf
 ```
-
-Available flags: `--host`, `--vmid`, `--hostname`, `--template`, `--storage`,
-`--disk`, `--cores`, `--memory`, `--swap`, `--bridge`, `--mac`, `--port`,
-`--base-url`, `--timezone`, `--tags`.
-
-The container uses DHCP. To pin it to a fixed address, add a DHCP reservation on
-your router for the container's MAC (found in `/etc/pve/lxc/<vmid>.conf`). By
-default Proxmox generates a fresh MAC each time you create a container, so a
-teardown-and-redeploy would break that reservation. To keep the same address
-across redeploys, pass the container's MAC back in with `--mac`:
-
-```bash
-./deploy/deploy-lxc.sh --mac <container-mac>
-```
-
-**Undeploy**
-
-```bash
-./deploy/undeploy-lxc.sh
-```
-
-Finds the container by hostname (default `annas-archive-api`), shows what it will
-remove, and asks for confirmation before stopping and destroying it (rootfs
-included). Use `--vmid <id>` to target a specific container, or `--yes` to skip
-the prompt.
-
-## How it works
-
-`dev.mjs` is an Express server that serves `public/` statically and mounts the
-two files in `api/` as route handlers. The handlers are framework-agnostic
-(`req.query` in, `res.status().json()` out), so they stay small and easy to test.
-
-All the real work lives in `lib/annas.js`, which the handlers are thin wrappers
-around.
 
 ---
 
 ## API
 
-Two endpoints, both `GET`, both returning JSON.
+Two `GET` endpoints, both returning JSON. `dev.mjs` serves `public/` and mounts
+each file in `api/` as a handler; the handlers are framework-agnostic
+(`req.query` in, `res.status().json()` out) and all real logic lives in
+`lib/annas.js`.
 
 ### `GET /api/search`
 
-Search Anna's Archive and return parsed, enriched results.
+**Authentication** — effectively required. Anna's Archive puts unauthenticated
+`/search` requests behind a DDoS-Guard JavaScript challenge that an HTTP client
+can't solve, so anonymous searches fail. A signed-in session skips it, and the
+account secret key is the same key `/api/download` uses:
+
+```
+Authorization: Bearer <your-account-secret-key>
+```
+
+The server trades it for a session cookie via `POST /account/` and caches only
+that cookie in memory, keyed by a hash of the key. The key itself is never
+stored, and an expired session triggers one silent re-login.
 
 **Query parameters**
 
-| Param       | Type    | Default | Notes                                                            |
-| ----------- | ------- | ------- | --------------------------------------------------------------- |
-| `query`     | string  | —       | **Required.** Title, author, ISBN, DOI, or MD5. Trimmed.        |
-| `limit`     | integer | `20`    | Clamped to the range `1`–`50`.                                  |
-| `downloads` | string  | `true`  | Pass `downloads=false` to skip per-result download-count lookups (faster). |
-| `tld`       | string  | —       | Mirror TLD to target (e.g. `gs`, `se`). Swaps the final label of `ANNAS_BASE_URL`'s host (`annas-archive.gd` → `annas-archive.gs`). A leading dot is tolerated; invalid/unknown TLDs fall back to the default mirror. |
+| Param       | Type    | Default | Notes |
+| ----------- | ------- | ------- | ----- |
+| `query`     | string  | —       | **Required.** Title, author, ISBN, DOI, or MD5. |
+| `limit`     | integer | `20`    | Clamped to `1`–`50`. |
+| `downloads` | string  | `true`  | `false` skips download-count lookups (faster). |
+| `tld`       | string  | —       | Mirror TLD, e.g. `gd`, `pk`, `gl`. See [Mirrors](#mirrors). |
 
 **Response `200`**
 
@@ -208,174 +167,159 @@ Search Anna's Archive and return parsed, enriched results.
 }
 ```
 
-Result fields:
-
-| Field        | Type             | Notes                                                                 |
-| ------------ | ---------------- | -------------------------------------------------------------------- |
-| `title`      | string           | Whitespace-normalized.                                                |
-| `author`     | string           | May be empty if the card has no author.                              |
-| `format`     | string \| null   | Lowercased token (`pdf`, `epub`, `mobi`, `djvu`, …).                  |
-| `downloads`  | number \| null   | Total download count, or `null` if not fetched or the lookup failed. |
-| `cover_url`  | string \| null   | Absolute URL; `null` when the result has no cover.                   |
-| `url`        | string           | Canonical Anna's Archive detail page.                               |
-| `md5`        | string           | File hash — the identifier used by `/api/download`.                  |
+| Field       | Type           | Notes |
+| ----------- | -------------- | ----- |
+| `title`     | string         | Whitespace-normalised. |
+| `author`    | string         | Empty if the card has no author. |
+| `format`    | string \| null | Lowercased: `pdf`, `epub`, `mobi`, `djvu`, … |
+| `downloads` | number \| null | `null` if not fetched or the lookup failed. |
+| `cover_url` | string \| null | Absolute URL, `null` when there's no cover. |
+| `url`       | string         | Anna's Archive detail page. |
+| `md5`       | string         | File hash — the identifier `/api/download` takes. |
 
 **Errors**
 
-| Status | Condition                                            | Body                              |
-| ------ | --------------------------------------------------- | -------------------------------- |
-| `400`  | `query` missing or empty                            | `{ "error": "query is required" }` |
-| `502`  | Upstream unreachable or returned a non-OK status    | `{ "error": "Failed to reach Anna's Archive: …" }` |
-| `500`  | Any other unexpected error                          | `{ "error": "…" }`               |
-
-**Example**
+| Status | Condition |
+| ------ | --------- |
+| `400`  | `query` missing or empty. |
+| `401`  | Upstream served a bot check (`code: "CHALLENGE"`), or the key was rejected. |
+| `502`  | Upstream unreachable or returned a non-OK status. |
+| `500`  | Anything else. |
 
 ```bash
-curl 'http://localhost:3000/api/search?query=clean%20code&limit=10'
-curl 'http://localhost:3000/api/search?query=clean%20code&downloads=false'
-curl 'http://localhost:3000/api/search?query=clean%20code&tld=gs'
+curl 'http://localhost:3000/api/search?query=clean%20code&limit=10' \
+  -H 'Authorization: Bearer YOUR_KEY'
 ```
 
 ### `GET /api/download`
 
-Resolve a file's MD5 into a time-limited fast-download URL by proxying Anna's
-Archive's `fast_download.json` endpoint with the caller's member key.
+Resolves an MD5 into a time-limited download URL by proxying Anna's Archive's
+`fast_download.json` with your member key.
 
-**Authentication**
-
-The fast-download key is supplied **per request** via an `Authorization` header
-and is never persisted server-side:
+**Authentication** — required, per request, never persisted server-side:
 
 ```
 Authorization: Bearer <your-fast-download-key>
 ```
 
-The header is required — there is no environment-variable fallback, so an
-unauthenticated request cannot spend a key the operator configured.
+There's no environment-variable fallback, so an unauthenticated request can't
+spend the operator's key.
 
 **Query parameters**
 
-| Param | Type   | Notes                                          |
-| ----- | ------ | --------------------------------------------- |
-| `md5` | string | **Required.** The file hash from a search result. |
-| `tld` | string | Mirror TLD to proxy through (e.g. `gs`, `se`). Same semantics as on `/api/search`; falls back to the default mirror when invalid. |
+| Param | Type   | Notes |
+| ----- | ------ | ----- |
+| `md5` | string | **Required.** The hash from a search result. |
+| `tld` | string | Mirror TLD. See [Mirrors](#mirrors) — your key is sent to this host. |
 
-**Response `200`**
-
-Passes through the upstream JSON, which includes the temporary download URL:
-
-```json
-{
-  "download_url": "https://...",
-  "...": "additional upstream fields"
-}
-```
+**Response `200`** passes the upstream JSON straight through, including
+`download_url`.
 
 **Errors**
 
-| Status  | Condition                                  | Body                                                       |
-| ------- | ----------------------------------------- | --------------------------------------------------------- |
-| `401`   | No key in header or env                     | `{ "error": "Download key not set — add it in Settings." }` |
-| `400`   | `md5` missing                               | `{ "error": "md5 is required" }`                          |
-| `4xx/5xx` | Upstream error (status passed through)     | `{ "error": "…" }` (defaults to `502` if no status)       |
-
-**Example**
+| Status    | Condition |
+| --------- | --------- |
+| `400`     | `md5` missing. |
+| `401`     | No key in the header. |
+| `4xx/5xx` | Upstream error, status passed through (`502` if none). |
 
 ```bash
 curl 'http://localhost:3000/api/download?md5=abc123...' \
   -H 'Authorization: Bearer YOUR_KEY'
-curl 'http://localhost:3000/api/download?md5=abc123...&tld=gs' \
-  -H 'Authorization: Bearer YOUR_KEY'
 ```
 
-### The scraping core — `lib/annas.js`
+---
 
-The handlers delegate to a handful of exported functions; you can import these
-directly if you want to embed the logic elsewhere.
+## Mirrors
 
-- **`parseSearchResults(html, baseUrl?)`** — pure function that scrapes a search
-  page's HTML into result objects (with `cheerio`). It anchors on each result's
-  title link (`a.js-vim-focus[href^='/md5/']`), walks up to the result card, and
-  pulls out the author, cover, and the `language · FORMAT · size · year …`
-  metadata line. No network access — this is what the tests exercise.
+Anna's Archive runs the same site across several TLDs. Set one globally with
+`ANNAS_BASE_URL`, per request with `tld`, or in the UI's Settings panel. `tld`
+swaps the final label of `ANNAS_BASE_URL`'s host, so `gd` → `annas-archive.gd`.
+A leading dot is fine; anything malformed or unknown falls back to the default.
 
-- **`search(query, { limit, includeDownloads, tld })`** — fetches the search
-  page, parses it, trims to `limit`, then (unless `includeDownloads` is false)
-  fans out concurrent requests to `/dyn/md5/inline_info/<md5>` to fill in download
-  counts. Those counts aren't in the static HTML — the real site loads them
-  client-side — so this step is what makes `downloads` non-null. Concurrency is
-  capped at 10 to stay polite to the origin, and individual count failures are
-  swallowed (leaving `downloads: null`) so one bad lookup never sinks the whole
-  response. Pass `tld` to target a specific mirror.
+> [!WARNING]
+> **Your download key is sent to whichever mirror you select**, as a `key=`
+> query parameter on the upstream URL. A mistyped, outdated, or squatted domain
+> receives it in full and logs it.
+>
+> Anna's Archive rotates its domains, and retired ones get re-registered by
+> third parties — `annas-archive.li`, a former mirror, now resolves to a
+> domain-parking page. Check the current list on the
+> [Anna's Archive Wikipedia page](https://en.wikipedia.org/wiki/Anna%27s_Archive)
+> before changing mirrors, and rotate your key if you've sent it somewhere
+> unintended.
 
-- **`fastDownload(md5, key, { tld })`** — proxies a single
-  `/dyn/api/fast_download.json` request with the caller's key and returns the
-  upstream JSON. Pass `tld` to target a specific mirror.
+## Configuration
 
-- **`resolveBaseUrl(tld)`** — maps a TLD like `"gs"` onto the upstream base URL
-  by swapping the final label of `ANNAS_BASE_URL`'s host (e.g.
-  `https://annas-archive.gd` → `https://annas-archive.gs`). A leading dot is
-  tolerated; an empty, malformed, or unknown TLD returns the default `BASE_URL`.
-  This is what both `search` and `fastDownload` use to honor the `tld` option.
+| Variable         | Default                    | Purpose |
+| ---------------- | -------------------------- | ------- |
+| `PORT`           | `3000`                     | Server port. |
+| `ANNAS_BASE_URL` | `https://annas-archive.gd` | Default mirror — see the warning above. |
 
-Failures to reach or parse the upstream throw `AnnasArchiveError`, which the
-search handler maps to a `502`.
-
-### Configuration
-
-All optional, read from the environment:
-
-| Variable             | Default                       | Purpose                                                       |
-| -------------------- | ----------------------------- | ----------------------------------------------------------- |
-| `PORT`               | `3000`                        | Server port (`dev.mjs`).                                    |
-| `ANNAS_BASE_URL`     | `https://annas-archive.gd`    | Upstream mirror to scrape/proxy.                            |
-
-A browser-like `User-Agent` is sent on every upstream request to avoid being
-served a DDoS-Guard challenge page, and every request has a 30s timeout.
+Every upstream request sends a browser-like `User-Agent` and times out after
+30s.
 
 ---
+
+## The scraping core — `lib/annas.js`
+
+Importable directly if you want the logic without the server.
+
+- **`parseSearchResults(html, baseUrl?)`** — pure function, no network. Anchors
+  on each title link (`a.js-vim-focus[href^='/md5/']`), walks up to the result
+  card, and pulls the author, cover, and `language · FORMAT · size · year` line.
+  This is what the tests exercise.
+
+- **`search(query, { limit, includeDownloads, tld, key })`** — fetches, parses,
+  trims to `limit`, then fans out to `/dyn/md5/inline_info/<md5>` for download
+  counts, which aren't in the static HTML. Concurrency is capped at 10 out of
+  politeness, and a failed count leaves `downloads: null` rather than sinking
+  the response. Without `key` the upstream answers with a challenge and an
+  `AnnasArchiveError` carrying `code: "CHALLENGE"`.
+
+- **`fastDownload(md5, key, { tld })`** — proxies one
+  `/dyn/api/fast_download.json` request and returns the upstream JSON.
+
+- **`resolveBaseUrl(tld)`** — maps a TLD onto the base URL by swapping the
+  host's final label. Both `search` and `fastDownload` use it.
+
+Unreachable or unparseable upstreams throw `AnnasArchiveError`.
 
 ## Front end
 
-A single static page, `public/index.html` — no build step, no framework, just
-inline CSS and vanilla JS talking to the two API endpoints.
+One static page, `public/index.html` — inline CSS and vanilla JS, no build step.
 
-**What it does**
+- Search bar with a results-count selector (10/20/30/50) wired to `limit`.
+- Results as a grid of cards: cover (📖 placeholder when missing), title,
+  author, colour-coded format badge, and download count (`15.4k`). The card
+  links to the detail page.
+- A **Download** button per card calls `/api/download` and opens the resolved
+  URL in a new tab, with inline error states.
+- A **⚙ Settings** panel holding the secret key and the mirror. The key lives in
+  `localStorage` (`annasDownloadKey`) and is sent as a `Bearer` token on both
+  search and download requests.
 
-- A search bar (Enter or the button triggers a search) with a results-count
-  selector (10/20/30/50) wired to the `limit` param.
-- Results render as a responsive grid of book cards showing the cover (with a 📖
-  placeholder on missing/broken images), title, author, a color-coded format
-  badge (`pdf`/`epub`/`djvu`/`mobi`), and the formatted download count
-  (e.g. `15.4k`). The whole card links to the Anna's Archive detail page.
-- A **Download** button on each card calls `/api/download` with the saved key and
-  opens the resolved URL in a new tab. Inline error states surface problems
-  (e.g. prompting to set a key).
-- A **⚙ Settings** panel where the user pastes their fast-download key. The key
-  is stored in `localStorage` (`annasDownloadKey`) and sent only on download
-  requests as a `Bearer` token — it never touches the server's disk.
-
-All user-supplied strings are HTML-escaped before injection into the DOM.
-
----
+Every scraped string is HTML-escaped before it reaches the DOM — search results
+are user-submitted data and treated as an XSS vector.
 
 ## Project layout
 
 ```
 api/
-  search.js        Request handler for /api/search (validation + JSON shaping)
-  download.js      Request handler for /api/download (key extraction + proxy)
+  search.js        /api/search — validation + JSON shaping
+  download.js      /api/download — key extraction + proxy
+  bearer.js        Shared Authorization: Bearer parsing
 lib/
-  annas.js         Scraping + download core: parseSearchResults, search, fastDownload
+  annas.js         Scrape + download core, session handling
 public/
-  index.html       The entire front end (HTML + CSS + JS)
+  index.html       The entire front end
 test/
   parse.test.mjs   Offline parser tests
-  fixtures/        Saved search-page HTML used by the tests
+  fixtures/        Saved search-page HTML
 deploy/
-  deploy-lxc.sh    Create a Proxmox LXC and run the app as a systemd service
-  undeploy-lxc.sh  Stop and destroy that LXC
-dev.mjs            Express server (serves public/ + mounts the api/ handlers)
-Dockerfile         Container build (node:24-alpine, non-root, prod deps only)
-.dockerignore      Keeps the Docker build context lean
+  deploy-lxc.sh    Create a Proxmox LXC, run the app as a systemd service
+  undeploy-lxc.sh  Stop and destroy it
+dev.mjs            Express server
+Dockerfile         node:24-alpine, non-root, prod deps
+.dockerignore      Keeps the build context lean
 ```
