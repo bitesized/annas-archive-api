@@ -93,19 +93,6 @@
       cursor: pointer;
     }
 
-    .options input.tld-input {
-      width: 92px;
-      padding: 0.35rem 0.65rem;
-      border: 1px solid #2a2a38;
-      border-radius: 6px;
-      background: #1a1a24;
-      color: #e8e8f0;
-      font-size: 0.85rem;
-      outline: none;
-    }
-
-    .options input.tld-input:focus { border-color: #5b6aff; }
-
     .settings-toggle {
       margin-left: auto;
       padding: 0.35rem 0.7rem;
@@ -173,6 +160,34 @@
 
     #key-state.set { color: #66bb6a; }
     #key-state.unset { color: #ff8a65; }
+
+    .settings-divider {
+      margin: 1.1rem 0 0;
+      border: 0;
+      border-top: 1px solid #2a2a38;
+    }
+
+    .settings > label.spaced { margin-top: 1.1rem; }
+
+    .settings-row.narrow input { flex: 0 0 160px; }
+
+    .settings-hint a { color: #8b97ff; }
+    .settings-hint a:hover { color: #aab3ff; }
+
+    .settings-warning {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.6rem;
+      padding: 0.6rem 0.7rem;
+      border: 1px solid #5a3a1a;
+      border-radius: 6px;
+      background: #1e1710;
+      font-size: 0.72rem;
+      line-height: 1.5;
+      color: #d7a76b;
+    }
+
+    .settings-warning strong { color: #ffb877; font-weight: 600; }
 
     #status {
       text-align: center;
@@ -361,15 +376,6 @@
       <option value="30">30</option>
       <option value="50">50</option>
     </select>
-    <label for="tld">Mirror:</label>
-    <input type="text" id="tld" class="tld-input" list="tld-options"
-           placeholder="Default" autocomplete="off" spellcheck="false"
-           title="Anna's Archive mirror — pick a TLD or type your own" />
-    <datalist id="tld-options">
-      <option value=".pk"></option>
-      <option value=".gd"></option>
-      <option value=".gl"></option>
-    </datalist>
     <button id="settings-toggle" class="settings-toggle" onclick="toggleSettings()" title="Settings">⚙ Settings</button>
   </div>
 
@@ -379,7 +385,22 @@
       <input type="password" id="dl-key" placeholder="Paste your fast-download key" autocomplete="off" />
       <button id="dl-key-save" onclick="saveKey()">Save</button>
     </div>
-    <p class="settings-hint">Stored locally in your browser and sent only to your own server for downloads. <span id="key-state"></span></p>
+    <p class="settings-hint">Stored locally in your browser and sent to your own server only. Needed for searches as well as downloads — signed-in searches skip Anna's Archive's bot check. <span id="key-state"></span></p>
+
+    <hr class="settings-divider" />
+
+    <label for="tld" class="spaced">Mirror</label>
+    <div class="settings-row narrow">
+      <input type="text" id="tld" list="tld-options" placeholder="Default"
+             autocomplete="off" spellcheck="false" />
+    </div>
+    <datalist id="tld-options">
+      <option value=".pk"></option>
+      <option value=".gd"></option>
+      <option value=".gl"></option>
+    </datalist>
+    <p class="settings-hint">Leave blank to use the server's default mirror. Anna's Archive rotates its domains, so the suggestions above go stale — check the current list on the <a href="https://en.wikipedia.org/wiki/Anna%27s_Archive" target="_blank" rel="noopener noreferrer">Anna's Archive Wikipedia page</a> before changing this.</p>
+    <p class="settings-warning"><span aria-hidden="true">&#9888;</span> <span><strong>Your download key is sent to whichever mirror you set here.</strong> A mistyped, outdated, or squatted domain will receive it in the request URL. Retired mirrors do get re-registered by third parties &mdash; <code>annas-archive.li</code> now resolves to a domain-parking page rather than Anna's Archive.</span></p>
   </div>
 
   <div id="status"></div>
@@ -395,8 +416,10 @@
       if (e.key === "Enter") doSearch();
     });
 
-    // --- Mirror (TLD) selection, persisted locally. Free-text with a few
-    // suggested TLDs (see the datalist); anything the user types is accepted.
+    // --- Mirror (TLD) selection, persisted locally. Lives in the Settings
+    // panel because the download key is sent to whichever mirror is set here.
+    // Free-text with a few suggested TLDs (see the datalist); anything the
+    // user types is accepted.
     const TLD_STORAGE = "annasTld";
     const tldInput = document.getElementById("tld");
     tldInput.value = localStorage.getItem(TLD_STORAGE) || "";
@@ -464,10 +487,20 @@
       try {
         const params = new URLSearchParams({ query, limit });
         if (tld) params.set("tld", tld);
-        const res = await fetch(`/api/search?${params}`);
+        // The key is optional but signed-in searches skip the upstream's bot
+        // check, so send it when we have one.
+        const key = getKey();
+        const res = await fetch(`/api/search?${params}`, {
+          headers: key ? { Authorization: `Bearer ${key}` } : {},
+        });
         const data = await res.json();
 
         if (!res.ok) {
+          // A bot check or a rejected key is fixable in Settings — open it.
+          if (res.status === 401) {
+            const panel = document.getElementById("settings");
+            if (panel.hidden) toggleSettings();
+          }
           throw new Error(data.error || "Request failed");
         }
 
