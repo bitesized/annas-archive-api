@@ -300,9 +300,15 @@ Unreachable or unparseable upstreams throw `AnnasArchiveError`.
 One static page, `public/index.html` — inline CSS and vanilla JS, no build step.
 
 - Search bar with a results-count selector (10/20/30/50) wired to `limit`.
+- File-type filter and sort controls (relevance, most downloaded, title,
+  author, file type). Both work on the results already fetched — Anna's Archive
+  only offers its own ordering upstream, and download counts aren't in the
+  search HTML at all. The filter is rebuilt from each search's results, so it
+  only lists types that would actually match.
 - Results as a grid of cards: cover (📖 placeholder when missing), title,
-  author, colour-coded format badge, and download count (`15.4k`). The card
-  links to the detail page.
+  author, colour-coded format badge, and download count (`15.4k`). PDF, EPUB,
+  DJVU and MOBI each have their own badge colour; every other type shares one.
+  The card links to the detail page.
 - A **Download** button per card calls `/api/download` and opens the resolved
   URL in a new tab, with inline error states.
 - A **⚙ Settings** panel holding the secret key and the mirror. The key lives in

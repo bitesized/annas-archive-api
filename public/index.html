@@ -40,7 +40,7 @@
       margin: 0 auto 1rem;
     }
 
-    .search-bar input[type="text"] {
+    .search-bar input {
       flex: 1;
       padding: 0.75rem 1rem;
       border: 1px solid #2a2a38;
@@ -52,9 +52,14 @@
       transition: border-color 0.15s;
     }
 
-    .search-bar input[type="text"]:focus {
+    .search-bar input:focus {
       border-color: #5b6aff;
     }
+
+    /* type="search" brings its own chrome; the clear button is unreadable on
+       a dark field, so strip the platform styling back to a plain box. */
+    .search-bar input { appearance: none; -webkit-appearance: none; }
+    .search-bar input::-webkit-search-cancel-button { display: none; }
 
     .search-bar button {
       padding: 0.75rem 1.5rem;
@@ -75,7 +80,8 @@
     .options {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      flex-wrap: wrap;
+      gap: 0.5rem 0.75rem;
       max-width: 700px;
       margin: 0 auto 2rem;
     }
@@ -137,6 +143,13 @@
     }
 
     .settings-row input:focus { border-color: #5b6aff; }
+
+    /* Masks the download key without using <input type="password">, which is
+       what makes password managers treat this page as a login form. */
+    .masked {
+      -webkit-text-security: disc;
+      text-security: disc;
+    }
 
     .settings-row button {
       padding: 0.55rem 1.1rem;
@@ -315,6 +328,10 @@
     .format-badge.djvu { color: #ffd54f; border-color: #4a3a00; background: #1e1800; }
     .format-badge.mobi { color: #ce93d8; border-color: #3a1a4a; background: #180e20; }
 
+    /* Everything else — fb2, azw3, cbz, txt … — shares one badge colour so the
+       four common formats stay distinguishable at a glance. */
+    .format-badge.other { color: #8899ff; border-color: #3a3a55; background: #2a2a3e; }
+
     .download-count {
       font-size: 0.68rem;
       color: #666;
@@ -363,10 +380,13 @@
     <p>Search by title, author, ISBN, DOI, or MD5</p>
   </header>
 
-  <div class="search-bar">
-    <input type="text" id="query" placeholder="e.g. Clean Code, Robert Martin, 978-0-13-235088-4" autocomplete="off" />
-    <button id="search-btn" onclick="doSearch()">Search</button>
-  </div>
+  <form class="search-bar" id="search-form" role="search" autocomplete="off" onsubmit="doSearch(event)">
+    <input type="search" id="query" name="q" enterkeyhint="search"
+           placeholder="e.g. Clean Code, Robert Martin, 978-0-13-235088-4"
+           autocomplete="off" spellcheck="false"
+           data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other" />
+    <button type="submit" id="search-btn">Search</button>
+  </form>
 
   <div class="options">
     <label for="limit">Results:</label>
@@ -376,13 +396,28 @@
       <option value="30">30</option>
       <option value="50">50</option>
     </select>
+    <label for="type">Type:</label>
+    <select id="type">
+      <option value="all">All file types</option>
+    </select>
+    <label for="sort">Sort:</label>
+    <select id="sort">
+      <option value="relevance" selected>Relevance</option>
+      <option value="downloads">Most downloaded</option>
+      <option value="title">Title A–Z</option>
+      <option value="title-desc">Title Z–A</option>
+      <option value="author">Author A–Z</option>
+      <option value="format">File type</option>
+    </select>
     <button id="settings-toggle" class="settings-toggle" onclick="toggleSettings()" title="Settings">⚙ Settings</button>
   </div>
 
   <div id="settings" class="settings" hidden>
     <label for="dl-key">Anna's Archive download key</label>
     <div class="settings-row">
-      <input type="password" id="dl-key" placeholder="Paste your fast-download key" autocomplete="off" />
+      <input type="text" id="dl-key" class="masked" placeholder="Paste your fast-download key"
+             autocomplete="off" spellcheck="false" autocapitalize="off"
+             data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other" />
       <button id="dl-key-save" onclick="saveKey()">Save</button>
     </div>
     <p class="settings-hint">Stored locally in your browser and sent to your own server only. Needed for searches as well as downloads — signed-in searches skip Anna's Archive's bot check. <span id="key-state"></span></p>
@@ -392,7 +427,8 @@
     <label for="tld" class="spaced">Mirror</label>
     <div class="settings-row narrow">
       <input type="text" id="tld" list="tld-options" placeholder="Default"
-             autocomplete="off" spellcheck="false" />
+             autocomplete="off" spellcheck="false"
+             data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other" />
     </div>
     <datalist id="tld-options">
       <option value=".pk"></option>
@@ -411,10 +447,8 @@
     const resultsEl = document.getElementById("results");
     const statusEl = document.getElementById("status");
     const btn = document.getElementById("search-btn");
-
-    queryInput.addEventListener("keydown", e => {
-      if (e.key === "Enter") doSearch();
-    });
+    const sortSelect = document.getElementById("sort");
+    const typeSelect = document.getElementById("type");
 
     // --- Mirror (TLD) selection, persisted locally. Lives in the Settings
     // panel because the download key is sent to whichever mirror is set here.
@@ -472,7 +506,8 @@
 
     updateKeyState();
 
-    async function doSearch() {
+    async function doSearch(event) {
+      if (event) event.preventDefault();
       const query = queryInput.value.trim();
       if (!query) return;
 
@@ -507,13 +542,16 @@
         const items = data?.results ?? [];
         const total = data?.count ?? items.length;
 
+        lastResults = items;
+        lastTotal = total;
+        populateTypes(items);
+
         if (items.length === 0) {
           statusEl.textContent = "No results found.";
           return;
         }
 
-        statusEl.textContent = `Showing ${items.length} of ${total} result${total !== 1 ? "s" : ""}`;
-        resultsEl.innerHTML = items.map(bookCard).join("");
+        renderResults();
       } catch (err) {
         statusEl.className = "error";
         statusEl.textContent = "Error: " + err.message;
@@ -521,6 +559,91 @@
         btn.disabled = false;
       }
     }
+
+    // --- Sorting and file-type filtering. Both run over the results already on
+    // the page: Anna's Archive only exposes its own ordering upstream, and the
+    // download counts aren't in the search HTML at all (we fetch them per
+    // result), so there is nothing to sort by until the page has come back.
+    let lastResults = [];
+    let lastTotal = 0;
+
+    const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
+    /** Compare on a text field, pushing blanks to the bottom either way. */
+    function byText(get) {
+      return (a, b) => {
+        const x = get(a) || "";
+        const y = get(b) || "";
+        if (!x || !y) return (!x && !y) ? 0 : (x ? -1 : 1);
+        return collator.compare(x, y);
+      };
+    }
+
+    const byTitle = byText(b => b.title);
+
+    const SORTS = {
+      relevance: null, // upstream order, as returned
+      downloads: (a, b) => (b.downloads ?? -1) - (a.downloads ?? -1) || byTitle(a, b),
+      title: byTitle,
+      "title-desc": (a, b) => -byTitle(a, b),
+      author: (a, b) => byText(x => x.author)(a, b) || byTitle(a, b),
+      format: (a, b) => byText(x => x.format)(a, b) || byTitle(a, b),
+    };
+
+    /** Normalised filter key for a result: its format, or "unknown". */
+    function typeKey(book) {
+      return (book.format || "").toLowerCase() || "unknown";
+    }
+
+    /**
+     * Rebuild the type filter from whatever formats this search turned up, so
+     * the list only ever offers types that would actually match something. The
+     * current choice is kept when the new results still contain it.
+     */
+    function populateTypes(items) {
+      const counts = new Map();
+      for (const b of items) counts.set(typeKey(b), (counts.get(typeKey(b)) || 0) + 1);
+
+      const keys = [...counts.keys()].sort((a, b) => {
+        if (a === "unknown" || b === "unknown") return a === "unknown" ? 1 : -1;
+        return collator.compare(a, b);
+      });
+
+      const previous = typeSelect.value;
+      typeSelect.innerHTML =
+        `<option value="all">All file types (${items.length})</option>` +
+        keys
+          .map((k) => {
+            const label = k === "unknown" ? "Unknown" : k.toUpperCase();
+            return `<option value="${esc(k)}">${esc(label)} (${counts.get(k)})</option>`;
+          })
+          .join("");
+      typeSelect.value = counts.has(previous) ? previous : "all";
+    }
+
+    function renderResults() {
+      const type = typeSelect.value;
+      let items = type === "all" ? lastResults : lastResults.filter((b) => typeKey(b) === type);
+
+      const cmp = SORTS[sortSelect.value];
+      if (cmp) items = items.slice().sort(cmp);
+
+      resultsEl.innerHTML = items.map(bookCard).join("");
+
+      const label = type === "all" ? "" : ` ${type === "unknown" ? "untyped" : type.toUpperCase()}`;
+      statusEl.className = "";
+      statusEl.textContent = items.length
+        ? `Showing ${items.length}${label} of ${lastTotal} result${lastTotal !== 1 ? "s" : ""}`
+        : `No${label} results in this search.`;
+    }
+
+    for (const el of [sortSelect, typeSelect]) {
+      el.addEventListener("change", () => {
+        if (lastResults.length) renderResults();
+      });
+    }
+
+    const COLOURED_FORMATS = new Set(["pdf", "epub", "djvu", "mobi"]);
 
     function fmtDownloads(n) {
       if (!n && n !== 0) return "";
@@ -534,9 +657,11 @@
         ? `<img src="${esc(book.cover_url)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=cover-placeholder>📖</div>'">`
         : `<div class="cover-placeholder">📖</div>`;
 
+      // Only the four formats with their own colour get their own class; the
+      // rest share `.other` rather than injecting an arbitrary class name.
       const fmt = book.format ? book.format.toLowerCase() : null;
       const fmtBadge = fmt
-        ? `<span class="format-badge ${esc(fmt)}">${esc(book.format.toUpperCase())}</span>`
+        ? `<span class="format-badge ${COLOURED_FORMATS.has(fmt) ? esc(fmt) : "other"}">${esc(fmt.toUpperCase())}</span>`
         : "";
 
       const dlCount = (book.downloads != null)
