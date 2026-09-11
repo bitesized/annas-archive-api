@@ -53,3 +53,39 @@ test("first result fields", () => {
   // Downloads are not in the static HTML, so the parser leaves them unset.
   assert.equal(first.downloads, null);
 });
+
+/**
+ * Formats are read out of the metadata line, which also carries the year and
+ * the file size. Alphanumeric extensions (fb2, azw3, mp3) have to survive that
+ * without a bare year being mistaken for a format, so build the minimum card
+ * shape the parser looks for and feed it one metadata line at a time.
+ */
+function formatOf(metaLine) {
+  const md5 = "0".repeat(32);
+  const parsed = parseSearchResults(
+    `<div class="flex pt-3">
+       <a href="/md5/${md5}" class="js-vim-focus">Title</a>
+       <div class="font-semibold text-sm leading-[1.2]">${metaLine}</div>
+     </div>`,
+    BASE_URL
+  );
+  assert.equal(parsed.length, 1);
+  return parsed[0].format;
+}
+
+test("alphanumeric formats are recognised", () => {
+  const meta = (fmt) => `English [en] · ${fmt} · 1.2MB · 2014 · 📕 Book (fiction) · 🚀/lgli/lgrs`;
+  assert.equal(formatOf(meta("FB2")), "fb2");
+  assert.equal(formatOf(meta("AZW3")), "azw3");
+  assert.equal(formatOf(meta("MP3")), "mp3");
+  assert.equal(formatOf(meta("CBZ")), "cbz");
+  assert.equal(formatOf(meta("EPUB")), "epub");
+});
+
+test("year and size are never mistaken for a format", () => {
+  assert.equal(
+    formatOf("English [en] · 1.2MB · 2014 · 📕 Book (fiction)"),
+    null
+  );
+  assert.equal(formatOf("Spanish [es] · 2006 · 0.4MB"), null);
+});
