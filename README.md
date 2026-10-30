@@ -72,7 +72,7 @@ authorises fast downloads. Searches without it fail (see
 
 ## Run with Docker
 
-Builds on `node:24-alpine`, production dependencies only, runs as the non-root
+Builds on `node:24.22.1-alpine`, production dependencies only, runs as the non-root
 `node` user.
 
 ```bash
@@ -107,8 +107,8 @@ on the node (e.g. `debian-13-standard`).
 ```
 
 Deploy picks a free VMID, creates a Debian 13 container on DHCP, installs Node
-and the app, registers the service, and prints the container's IP. Flags:
-`--host`, `--vmid`, `--hostname`, `--template`, `--storage`, `--disk`,
+24 from NodeSource and the app, registers the service, and prints the
+container's IP. Flags: `--host`, `--vmid`, `--hostname`, `--template`, `--storage`, `--disk`,
 `--cores`, `--memory`, `--swap`, `--bridge`, `--mac`, `--port`, `--base-url`,
 `--timezone`, `--tags`.
 
@@ -336,6 +336,6 @@ deploy/
   deploy-lxc.sh    Create a Proxmox LXC, run the app as a systemd service
   undeploy-lxc.sh  Stop and destroy it
 dev.mjs            Express server
-Dockerfile         node:24-alpine, non-root, prod deps
+Dockerfile         node:24.22.1-alpine, non-root, prod deps
 .dockerignore      Keeps the build context lean
 ```
